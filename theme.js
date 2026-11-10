@@ -16,7 +16,7 @@
     const theme = preference || (systemTheme.matches ? 'dark' : 'light');
     root.dataset.theme = theme;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = theme === 'light' ? '#f5f2eb' : '#101c2b';
+    if (meta) meta.content = theme === 'light' ? '#f1f0e8' : '#111613';
     document.querySelectorAll('.theme-toggle').forEach(button => {
       const label = theme === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему';
       button.setAttribute('aria-label', label);

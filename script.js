@@ -12,6 +12,78 @@ const navigation = document.querySelector('#navigation');
 const scrollProgress = document.querySelector('.scroll-progress');
 const backTop = document.querySelector('.back-top');
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const motionRoot = document.documentElement;
+const heroArt = document.querySelector('.hero-art');
+const motionToggle = document.querySelector('.motion-toggle');
+const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
+let userPausedMotion = false;
+let heroVisible = true;
+let pointerFrame = 0;
+let pointerX = 0;
+let pointerY = 0;
+
+function motionIsPaused() {
+  return userPausedMotion || reducedMotion.matches;
+}
+
+function canAnimateHero() {
+  return heroArt && !motionIsPaused() && heroVisible && !document.hidden;
+}
+
+function resetHeroPointer() {
+  if (pointerFrame) cancelAnimationFrame(pointerFrame);
+  pointerFrame = 0;
+  pointerX = pointerY = 0;
+  heroArt?.style.setProperty('--pointer-x', '0px');
+  heroArt?.style.setProperty('--pointer-y', '0px');
+}
+
+function updateHeroMotion() {
+  if (!heroArt) return;
+  // Read layout once per scroll frame; transforms never affect surrounding content.
+  const bounds = heroArt.getBoundingClientRect();
+  heroVisible = bounds.bottom > 0 && bounds.top < window.innerHeight;
+  const running = canAnimateHero();
+  heroArt.dataset.motion = running ? 'running' : 'paused';
+  const shift = running ? Math.max(-35, Math.min(35, window.scrollY * 0.045)) : 0;
+  heroArt.style.setProperty('--scroll-shift', `${shift.toFixed(2)}px`);
+  if (!running) resetHeroPointer();
+}
+
+function syncMotionControls() {
+  const paused = motionIsPaused();
+  motionRoot.classList.add('motion-ready');
+  motionRoot.classList.toggle('motion-paused', paused);
+  if (motionToggle) {
+    motionToggle.hidden = false;
+    motionToggle.setAttribute('aria-pressed', String(paused));
+    motionToggle.textContent = paused ? 'Включить анимацию' : 'Остановить анимацию';
+    motionToggle.disabled = reducedMotion.matches;
+    motionToggle.title = reducedMotion.matches
+      ? 'Анимация отключена настройками вашего устройства'
+      : paused ? 'Включить декоративную анимацию' : 'Остановить декоративную анимацию';
+  }
+  updateHeroMotion();
+}
+
+// Pointer movement enhances the illustration only on devices with a precise pointer.
+heroArt?.addEventListener('pointermove', event => {
+  if (!finePointer.matches || !canAnimateHero()) return;
+  const bounds = heroArt.getBoundingClientRect();
+  pointerX = Math.max(-10, Math.min(10, ((event.clientX - bounds.left) / bounds.width - 0.5) * 20));
+  pointerY = Math.max(-10, Math.min(10, ((event.clientY - bounds.top) / bounds.height - 0.5) * 20));
+  if (pointerFrame) return;
+  pointerFrame = requestAnimationFrame(() => {
+    pointerFrame = 0;
+    if (!canAnimateHero() || !finePointer.matches) return;
+    heroArt.style.setProperty('--pointer-x', `${pointerX.toFixed(2)}px`);
+    heroArt.style.setProperty('--pointer-y', `${pointerY.toFixed(2)}px`);
+  });
+}, { passive: true });
+heroArt?.addEventListener('pointerleave', resetHeroPointer);
+finePointer.addEventListener('change', resetHeroPointer);
+document.addEventListener('visibilitychange', syncMotionControls);
+
 
 function closeMenu(returnFocus = false) {
   navigation?.classList.remove('open');
@@ -32,7 +104,7 @@ document.addEventListener('keydown', event => {
 document.addEventListener('click', event => {
   if (header && !header.contains(event.target)) closeMenu();
 });
-window.matchMedia('(min-width: 1100px)').addEventListener('change', () => closeMenu());
+window.matchMedia('(min-width: 1200px)').addEventListener('change', () => closeMenu());
 header?.addEventListener('focusout', event => {
   if (event.relatedTarget && !header.contains(event.relatedTarget)) closeMenu();
 });
@@ -45,13 +117,14 @@ document.querySelectorAll('a[href^="#"]').forEach(link => {
     const hash = link.getAttribute('href');
     if (location.hash !== hash) history.pushState(null, '', hash);
     closeMenu();
-    target.scrollIntoView({ behavior: reducedMotion.matches ? 'instant' : 'smooth' });
+    target.scrollIntoView({ behavior: motionIsPaused() ? 'instant' : 'smooth' });
     target.setAttribute('tabindex', '-1');
     target.focus({ preventScroll: true });
   });
 });
 
 function updateScroll() {
+  updateHeroMotion();
   header?.classList.toggle('scrolled', window.scrollY > 30);
   if (backTop) {
     const visible = window.scrollY >= 550;
@@ -75,7 +148,7 @@ window.addEventListener('resize', scheduleScroll, { passive: true });
 if (backTop) backTop.hidden = false;
 updateScroll();
 backTop?.addEventListener('click', () => {
-  window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'instant' : 'smooth' });
+  window.scrollTo({ top: 0, behavior: motionIsPaused() ? 'instant' : 'smooth' });
   document.querySelector('.brand')?.focus({ preventScroll: true });
 });
 window.addEventListener('popstate', () => {
@@ -96,7 +169,7 @@ let revealObserver;
 let stageObserver;
 let countObserver;
 
-document.querySelectorAll('.service-grid, .equipment-catalog, .results-grid, .about-stats').forEach(group => {
+document.querySelectorAll('.hero-copy, .service-grid, .equipment-catalog, .results-grid, .about-stats').forEach(group => {
   [...group.children].forEach((element, index) => {
     element.style.setProperty('--reveal-delay', `${(index % 4) * 90}ms`);
   });
@@ -139,7 +212,7 @@ if ('IntersectionObserver' in window && !reducedMotion.matches) {
       const value = Number(element.dataset.count);
       const start = performance.now();
       function frame(now) {
-        const progress = reducedMotion.matches ? 1 : Math.min((now - start) / 1200, 1);
+        const progress = motionIsPaused() ? 1 : Math.min((now - start) / 1200, 1);
         element.textContent = Math.round(value * (1 - Math.pow(1 - progress, 3))).toLocaleString('ru-RU');
         if (progress < 1) requestAnimationFrame(frame);
       }
@@ -156,7 +229,27 @@ if ('IntersectionObserver' in window && !reducedMotion.matches) {
 reducedMotion.addEventListener('change', event => {
   // Once shown, content stays visible even if the preference changes again.
   if (event.matches) finishMotion();
+  syncMotionControls();
 });
+motionToggle?.addEventListener('click', () => {
+  if (reducedMotion.matches) return;
+  userPausedMotion = !userPausedMotion;
+  if (userPausedMotion) finishMotion();
+  syncMotionControls();
+});
+if (heroArt && 'IntersectionObserver' in window) {
+  const heroObserver = new IntersectionObserver(entries => {
+    heroVisible = entries[0].isIntersecting;
+    const running = canAnimateHero();
+    heroArt.dataset.motion = running ? 'running' : 'paused';
+    if (!running) {
+      resetHeroPointer();
+      heroArt.style.setProperty('--scroll-shift', '0px');
+    }
+  }, { threshold: 0 });
+  heroObserver.observe(heroArt);
+}
+syncMotionControls();
 
 if ('IntersectionObserver' in window) {
   const links = [...document.querySelectorAll('#navigation a[href^="#"]')];
@@ -186,7 +279,7 @@ document.querySelectorAll('.machine-card').forEach(card => {
     panel.classList.toggle('is-open', open);
     panel.toggleAttribute('inert', !open);
     if (open) card.classList.add('details-open');
-    else if (reducedMotion.matches) card.classList.remove('details-open');
+    else if (motionIsPaused()) card.classList.remove('details-open');
     else closeTimer = setTimeout(() => card.classList.remove('details-open'), 350);
   }
   card.addEventListener('keydown', event => {
