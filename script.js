@@ -9,45 +9,24 @@ const FORM_REQUEST_TIMEOUT_MS = 15000;
 const header = document.querySelector('#header');
 const toggle = document.querySelector('.menu-toggle');
 const navigation = document.querySelector('#navigation');
-const scrollProgress = document.querySelector('.scroll-progress');
 const backTop = document.querySelector('.back-top');
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const motionRoot = document.documentElement;
-const heroArt = document.querySelector('.hero-art');
+const lightArt = document.querySelector('.light-art');
 const motionToggle = document.querySelector('.motion-toggle');
-const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
 let userPausedMotion = false;
-let heroVisible = true;
-let pointerFrame = 0;
-let pointerX = 0;
-let pointerY = 0;
 
 function motionIsPaused() {
   return userPausedMotion || reducedMotion.matches;
 }
 
-function canAnimateHero() {
-  return heroArt && !motionIsPaused() && heroVisible && !document.hidden;
-}
-
-function resetHeroPointer() {
-  if (pointerFrame) cancelAnimationFrame(pointerFrame);
-  pointerFrame = 0;
-  pointerX = pointerY = 0;
-  heroArt?.style.setProperty('--pointer-x', '0px');
-  heroArt?.style.setProperty('--pointer-y', '0px');
-}
-
-function updateHeroMotion() {
-  if (!heroArt) return;
-  // Read layout once per scroll frame; transforms never affect surrounding content.
-  const bounds = heroArt.getBoundingClientRect();
-  heroVisible = bounds.bottom > 0 && bounds.top < window.innerHeight;
-  const running = canAnimateHero();
-  heroArt.dataset.motion = running ? 'running' : 'paused';
-  const shift = running ? Math.max(-35, Math.min(35, window.scrollY * 0.045)) : 0;
-  heroArt.style.setProperty('--scroll-shift', `${shift.toFixed(2)}px`);
-  if (!running) resetHeroPointer();
+// The illustration uses CSS transforms only; no canvas, wheel interception or
+// permanent JavaScript animation loop. Pause it when it cannot be seen.
+function updateSequenceMotion() {
+  if (!lightArt) return;
+  const bounds = lightArt.getBoundingClientRect();
+  const visible = bounds.bottom > 0 && bounds.top < window.innerHeight;
+  lightArt.dataset.motion = !motionIsPaused() && visible && !document.hidden ? 'running' : 'paused';
 }
 
 function syncMotionControls() {
@@ -57,33 +36,13 @@ function syncMotionControls() {
   if (motionToggle) {
     motionToggle.hidden = false;
     motionToggle.setAttribute('aria-pressed', String(paused));
-    motionToggle.textContent = paused ? 'Включить анимацию' : 'Остановить анимацию';
+    motionToggle.textContent = reducedMotion.matches ? 'Анимация отключена' : paused ? 'Включить анимацию' : 'Остановить анимацию';
     motionToggle.disabled = reducedMotion.matches;
-    motionToggle.title = reducedMotion.matches
-      ? 'Анимация отключена настройками вашего устройства'
-      : paused ? 'Включить декоративную анимацию' : 'Остановить декоративную анимацию';
+    motionToggle.title = reducedMotion.matches ? 'Анимация отключена настройками вашего устройства' : paused ? 'Включить декоративную анимацию' : 'Остановить декоративную анимацию';
   }
-  updateHeroMotion();
+  updateSequenceMotion();
 }
-
-// Pointer movement enhances the illustration only on devices with a precise pointer.
-heroArt?.addEventListener('pointermove', event => {
-  if (!finePointer.matches || !canAnimateHero()) return;
-  const bounds = heroArt.getBoundingClientRect();
-  pointerX = Math.max(-10, Math.min(10, ((event.clientX - bounds.left) / bounds.width - 0.5) * 20));
-  pointerY = Math.max(-10, Math.min(10, ((event.clientY - bounds.top) / bounds.height - 0.5) * 20));
-  if (pointerFrame) return;
-  pointerFrame = requestAnimationFrame(() => {
-    pointerFrame = 0;
-    if (!canAnimateHero() || !finePointer.matches) return;
-    heroArt.style.setProperty('--pointer-x', `${pointerX.toFixed(2)}px`);
-    heroArt.style.setProperty('--pointer-y', `${pointerY.toFixed(2)}px`);
-  });
-}, { passive: true });
-heroArt?.addEventListener('pointerleave', resetHeroPointer);
-finePointer.addEventListener('change', resetHeroPointer);
 document.addEventListener('visibilitychange', syncMotionControls);
-
 
 function closeMenu(returnFocus = false) {
   navigation?.classList.remove('open');
@@ -124,7 +83,7 @@ document.querySelectorAll('a[href^="#"]').forEach(link => {
 });
 
 function updateScroll() {
-  updateHeroMotion();
+  updateSequenceMotion();
   header?.classList.toggle('scrolled', window.scrollY > 30);
   if (backTop) {
     const visible = window.scrollY >= 550;
@@ -132,8 +91,6 @@ function updateScroll() {
     backTop.tabIndex = visible ? 0 : -1;
     backTop.setAttribute('aria-hidden', String(!visible));
   }
-  const distance = document.documentElement.scrollHeight - window.innerHeight;
-  if (scrollProgress) scrollProgress.style.transform = `scaleX(${distance > 0 ? Math.min(window.scrollY / distance, 1) : 0})`;
 }
 let scrollFrame = 0;
 function scheduleScroll() {
@@ -237,18 +194,6 @@ motionToggle?.addEventListener('click', () => {
   if (userPausedMotion) finishMotion();
   syncMotionControls();
 });
-if (heroArt && 'IntersectionObserver' in window) {
-  const heroObserver = new IntersectionObserver(entries => {
-    heroVisible = entries[0].isIntersecting;
-    const running = canAnimateHero();
-    heroArt.dataset.motion = running ? 'running' : 'paused';
-    if (!running) {
-      resetHeroPointer();
-      heroArt.style.setProperty('--scroll-shift', '0px');
-    }
-  }, { threshold: 0 });
-  heroObserver.observe(heroArt);
-}
 syncMotionControls();
 
 if ('IntersectionObserver' in window) {
